@@ -98,8 +98,8 @@
 // ==========================================
 // 1. CONFIGURATION: PASTE YOUR CREDENTIALS HERE
 // ==========================================
-const GIST_ID = "YOUR_GIST_ID_HERE";
-const GH_TOKEN = "YOUR_GITHUB_TOKEN_HERE"; 
+const GIST_ID = "9d087d947c089e17890fe64c048535fa";
+const GH_TOKEN = "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"; 
 
 // ==========================================
 // 2. GLOBAL VARIABLES
@@ -146,9 +146,9 @@ async function displayScoreboard() {
   const scoreboardList = document.getElementById('scoreboard-list');
   
   try {
-    const response = await fetch(`https://api.github.com/gists/${9d087d947c089e17890fe64c048535fa}`);
+    const response = await fetch(`https://api.github.com/gists/${GIST_ID}`);
     const data = await response.json();
-    const highScores = JSON.parse(data.files["scores.json"].content) || [];
+    const highScores = JSON.parse(data.files["score.json"].content) || [];
 
     scoreboardList.innerHTML = ''; 
     
@@ -189,9 +189,9 @@ async function handleGameOver() {
   setTimeout(async () => {
     try {
       // Fetch current
-      const response = await fetch(`https://api.github.com/gists/${9d087d947c089e17890fe64c048535fa}`);
+      const response = await fetch(`https://api.github.com/gists/${GIST_ID}`);
       const data = await response.json();
-      let highScores = JSON.parse(data.files["scores.json"].content) || [];
+      let highScores = JSON.parse(data.files["score.json"].content) || [];
       const lowestScore = highScores.length < 5 ? 0 : highScores[highScores.length - 1].score;
 
       // Check if qualified
@@ -204,14 +204,14 @@ async function handleGameOver() {
         highScores = highScores.slice(0, 5);
 
         // Save
-        await fetch(`https://api.github.com/gists/${9d087d947c089e17890fe64c048535fa}`, {
+        await fetch(`https://api.github.com/gists/${GIST_ID}`, {
           method: 'PATCH',
           headers: {
-            'Authorization': `token ${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}`,
+            'Authorization': `token ${GH_TOKEN}`,
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            files: { "scores.json": { content: JSON.stringify(highScores, null, 2) } }
+            files: { "score.json": { content: JSON.stringify(highScores, null, 2) } }
           })
         });
 

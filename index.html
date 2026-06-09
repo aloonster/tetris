@@ -14,29 +14,88 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    color: white;
+    font-family: monospace;
+  }
+
+  /* New wrapper to hold the game and scoreboard side-by-side */
+  .game-wrapper {
+    display: flex;
+    gap: 30px;
+    align-items: flex-start;
   }
 
   canvas {
     border: 1px solid white;
   }
+
+  /* Sidebar styling */
+  .sidebar {
+    width: 150px;
+  }
+
+  .score-box, .scoreboard-box {
+    margin-bottom: 30px;
+  }
+
+  h3 {
+    margin: 0 0 10px 0;
+    color: #aaa;
+    border-bottom: 1px solid #333;
+    padding-bottom: 5px;
+  }
+
+  #score-display {
+    font-size: 28px;
+    font-weight: bold;
+    color: #4CAF50; /* A nice retro green */
+  }
+
+  #scoreboard-list {
+    padding-left: 20px;
+    margin: 0;
+    font-size: 18px;
+  }
+
+  #scoreboard-list li {
+    margin-bottom: 8px;
+  }
   </style>
 </head>
 <body>
-<canvas width="320" height="640" id="game"></canvas>
+
+<div class="game-wrapper">
+  <canvas width="320" height="640" id="game"></canvas>
+  
+  <div class="sidebar">
+    <div class="score-box">
+      <h3>SCORE</h3>
+      <div id="score-display">0</div>
+    </div>
+    
+    <div class="scoreboard-box">
+      <h3>TOP 5</h3>
+      <ol id="scoreboard-list">
+        </ol>
+    </div>
+  </div>
+</div>
+
 <script>
 // https://tetris.fandom.com/wiki/Tetris_Guideline
 
+// --- NEW SCORING VARIABLES ---
+let score = 0;
+const LOCAL_STORAGE_KEY = 'tetris_high_scores';
+
 // get a random integer between the range of [min,max]
-// @see https://stackoverflow.com/a/1527820/2124254
 function getRandomInt(min, max) {
   min = Math.ceil(min);
   max = Math.floor(max);
-
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
 // generate a new tetromino sequence
-// @see https://tetris.fandom.com/wiki/Random_Generator
 function generateSequence() {
   const sequence = ['I', 'J', 'L', 'O', 'S', 'T', 'Z'];
 
@@ -71,13 +130,11 @@ function getNextTetromino() {
 }
 
 // rotate an NxN matrix 90deg
-// @see https://codereview.stackexchange.com/a/186834
 function rotate(matrix) {
   const N = matrix.length - 1;
   const result = matrix.map((row, i) =>
     row.map((val, j) => matrix[N - j][i])
   );
-
   return result;
 }
 
@@ -97,7 +154,6 @@ function isValidMove(matrix, cellRow, cellCol) {
       }
     }
   }
-
   return true;
 }
 
@@ -117,9 +173,13 @@ function placeTetromino() {
     }
   }
 
+  // --- MODIFIED: Track lines cleared for scoring ---
+  let linesClearedThisTurn = 0;
+
   // check for line clears starting from the bottom and working our way up
   for (let row = playfield.length - 1; row >= 0; ) {
     if (playfield[row].every(cell => !!cell)) {
+      linesClearedThisTurn++; // Count the line
 
       // drop every row above this one
       for (let r = row; r >= 0; r--) {
@@ -131,6 +191,13 @@ function placeTetromino() {
     else {
       row--;
     }
+  }
+
+  // Update Score if lines were cleared
+  if (linesClearedThisTurn > 0) {
+    const lineValues = { 1: 40, 2: 100, 3: 300, 4: 1200 };
+    score += (lineValues[linesClearedThisTurn] || 0);
+    document.getElementById('score-display').innerText = score;
   }
 
   tetromino = getNextTetromino();
@@ -151,7 +218,45 @@ function showGameOver() {
   context.textAlign = 'center';
   context.textBaseline = 'middle';
   context.fillText('GAME OVER!', canvas.width / 2, canvas.height / 2);
+
+  // --- NEW: Handle High Scores with a slight delay so canvas updates first ---
+  setTimeout(() => {
+    let highScores = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY)) || [];
+    const lowestScore = highScores.length < 5 ? 0 : highScores[highScores.length - 1].score;
+
+    if (score > 0 && (highScores.length < 5 || score > lowestScore)) {
+        const initials = prompt(`New High Score of ${score}! Enter your initials (max 3 letters):`) || "AAA";
+        const newEntry = { initials: initials.toUpperCase().slice(0, 3), score: score };
+        
+        highScores.push(newEntry);
+        highScores.sort((a, b) => b.score - a.score); // Sort highest to lowest
+        highScores = highScores.slice(0, 5); // Keep only top 5
+        
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(highScores));
+        displayScoreboard();
+    }
+  }, 100);
 }
+
+// --- NEW: Scoreboard display logic ---
+function displayScoreboard() {
+  const highScores = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY)) || [];
+  const scoreboardList = document.getElementById('scoreboard-list');
+  
+  scoreboardList.innerHTML = ''; // Clear existing list
+  
+  if (highScores.length === 0) {
+      scoreboardList.innerHTML = '<li style="color:#555;">No scores yet</li>';
+      return;
+  }
+
+  highScores.forEach(entry => {
+      const li = document.createElement('li');
+      li.innerText = `${entry.initials} - ${entry.score}`;
+      scoreboardList.appendChild(li);
+  });
+}
+
 
 const canvas = document.getElementById('game');
 const context = canvas.getContext('2d');
@@ -172,7 +277,6 @@ for (let row = -2; row < 20; row++) {
 }
 
 // how to draw each tetromino
-// @see https://tetris.fandom.com/wiki/SRS
 const tetrominos = {
   'I': [
     [0,0,0,0],
@@ -311,6 +415,10 @@ document.addEventListener('keydown', function(e) {
     tetromino.row = row;
   }
 });
+
+// --- INIT ---
+// Render the scoreboard as soon as the page loads
+displayScoreboard();
 
 // start the game
 rAF = requestAnimationFrame(loop);

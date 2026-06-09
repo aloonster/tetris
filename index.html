@@ -18,10 +18,12 @@
     font-family: monospace;
   }
 
+  /* Added relative positioning to contain the new modal */
   .game-wrapper {
     display: flex;
     gap: 30px;
     align-items: flex-start;
+    position: relative; 
   }
 
   canvas {
@@ -72,6 +74,68 @@
   
   .initials { color: #aaa; }
   .pts { color: #fff; }
+
+  /* ==========================================
+     NEW: CUSTOM SCORE MODAL STYLES
+  ========================================== */
+  #score-modal {
+    position: absolute;
+    top: 0; left: 0;
+    width: 320px; /* Matches canvas width */
+    height: 640px; /* Matches canvas height */
+    background: rgba(0, 0, 0, 0.85);
+    display: none; /* Hidden by default */
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+  }
+
+  .modal-content {
+    background: #111;
+    border: 2px solid #4CAF50;
+    padding: 20px;
+    text-align: center;
+    border-radius: 8px;
+    width: 80%;
+  }
+
+  .modal-content h2 {
+    color: #4CAF50;
+    margin-top: 0;
+    font-size: 20px;
+  }
+
+  #initials-input {
+    background: #000;
+    color: white;
+    border: 1px solid #555;
+    font-size: 24px;
+    width: 80px;
+    text-align: center;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin: 15px 0;
+    padding: 5px;
+  }
+
+  .modal-btn {
+    background: #4CAF50;
+    color: black;
+    border: none;
+    padding: 10px 20px;
+    font-family: monospace;
+    font-weight: bold;
+    font-size: 16px;
+    cursor: pointer;
+    width: 100%;
+    margin-bottom: 10px;
+  }
+  
+  .modal-btn.skip {
+    background: #444;
+    color: white;
+  }
   </style>
 </head>
 <body>
@@ -79,6 +143,16 @@
 <div class="game-wrapper">
   <canvas width="320" height="640" id="game"></canvas>
   
+  <div id="score-modal">
+    <div class="modal-content">
+      <h2>NEW HIGH SCORE!</h2>
+      <p style="margin: 0; color: #aaa;">Score: <span id="modal-score-display" style="color:white; font-weight:bold;">0</span></p>
+      <input type="text" id="initials-input" maxlength="3" placeholder="AAA" autocomplete="off" />
+      <button id="save-score-btn" class="modal-btn">SAVE SCORE</button>
+      <button id="skip-score-btn" class="modal-btn skip">SKIP</button>
+    </div>
+  </div>
+
   <div class="sidebar">
     <div class="score-box">
       <h3>CURRENT SCORE</h3>
@@ -105,10 +179,10 @@ const GH_TOKEN = "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";
 // 2. GLOBAL VARIABLES
 // ==========================================
 let score = 0;
-let gameStarted = false;
 let gameOver = false;
 let rAF = null;  
 let count = 0;
+let pendingHighScores = []; // Temporarily holds scores while modal is open
 
 const canvas = document.getElementById('game');
 const context = canvas.getContext('2d');
@@ -146,9 +220,9 @@ async function displayScoreboard() {
   const scoreboardList = document.getElementById('scoreboard-list');
   
   try {
-    const response = await fetch(`https://api.github.com/gists/${GIST_ID}`);
+    const response = await fetch(`https://api.github.com/gists/${GIST_ID}?v=${new Date().getTime()}`);
     const data = await response.json();
-    const highScores = JSON.parse(data.files["score.json"].content) || [];
+    const highScores = JSON.parse(data.files["scores.json"].content) || [];
 
     scoreboardList.innerHTML = ''; 
     
@@ -183,46 +257,63 @@ async function handleGameOver() {
   context.textBaseline = 'middle';
   context.fillText('GAME OVER', canvas.width / 2, canvas.height / 2);
 
-  if (score === 0) return; // Don't save 0 points
+  if (score === 0) return; 
 
-  // Slight delay to allow canvas to paint before browser thread locks for prompt/fetch
-  setTimeout(async () => {
-    try {
-      // Fetch current
-      const response = await fetch(`https://api.github.com/gists/${GIST_ID}`);
-      const data = await response.json();
-      let highScores = JSON.parse(data.files["score.json"].content) || [];
-      const lowestScore = highScores.length < 5 ? 0 : highScores[highScores.length - 1].score;
+  try {
+    // Check if score qualifies
+    const response = await fetch(`https://api.github.com/gists/${GIST_ID}?v=${new Date().getTime()}`);
+    const data = await response.json();
+    let highScores = JSON.parse(data.files["scores.json"].content) || [];
+    const lowestScore = highScores.length < 5 ? 0 : highScores[highScores.length - 1].score;
 
-      // Check if qualified
-      if (highScores.length < 5 || score > lowestScore) {
-        const initials = prompt(`NEW HIGH SCORE: ${score}!\nEnter 3 initials:`) || "AAA";
-        const newEntry = { initials: initials.toUpperCase().slice(0, 3), score: score };
-
-        highScores.push(newEntry);
-        highScores.sort((a, b) => b.score - a.score);
-        highScores = highScores.slice(0, 5);
-
-        // Save
-        await fetch(`https://api.github.com/gists/${GIST_ID}`, {
-          method: 'PATCH',
-          headers: {
-            'Authorization': `token ${GH_TOKEN}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            files: { "score.json": { content: JSON.stringify(highScores, null, 2) } }
-          })
-        });
-
-        displayScoreboard();
-      }
-    } catch (e) {
-      alert("Could not save score. Are the Token and Gist ID correct?");
-      console.error(e);
+    if (highScores.length < 5 || score > lowestScore) {
+      // Show our custom HTML modal instead of the blocked prompt()
+      pendingHighScores = highScores; 
+      document.getElementById('modal-score-display').innerText = score;
+      document.getElementById('score-modal').style.display = 'flex';
+      document.getElementById('initials-input').focus();
     }
-  }, 150);
+  } catch (e) {
+    console.error("Could not fetch scores to verify.", e);
+  }
 }
+
+// Modal Button Listeners
+document.getElementById('save-score-btn').addEventListener('click', async () => {
+  document.getElementById('score-modal').style.display = 'none'; // Hide modal
+
+  const initialsInput = document.getElementById('initials-input').value.toUpperCase().trim();
+  const initials = initialsInput.length > 0 ? initialsInput.slice(0, 3) : "AAA";
+  
+  const newEntry = { initials: initials, score: score };
+  pendingHighScores.push(newEntry);
+  pendingHighScores.sort((a, b) => b.score - a.score);
+  pendingHighScores = pendingHighScores.slice(0, 5);
+
+  try {
+    document.getElementById('scoreboard-list').innerHTML = '<li style="color:#555;">Saving...</li>';
+    
+    // Save to GitHub
+    await fetch(`https://api.github.com/gists/${GIST_ID}`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `token ${GH_TOKEN}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        files: { "scores.json": { content: JSON.stringify(pendingHighScores, null, 2) } }
+      })
+    });
+
+    displayScoreboard(); // Refresh board
+  } catch (e) {
+    console.error("Save failed", e);
+  }
+});
+
+document.getElementById('skip-score-btn').addEventListener('click', () => {
+  document.getElementById('score-modal').style.display = 'none';
+});
 
 // ==========================================
 // 4. TETRIS MECHANICS
@@ -342,19 +433,12 @@ function loop() {
 // 5. CONTROLS & INIT
 // ==========================================
 document.addEventListener('keydown', function(e) {
-  // Prevent page scrolling on arrow keys and space
-  if([32, 37, 38, 39, 40].indexOf(e.which) > -1) {
+  if (gameOver) return;
+
+  // Prevent page scrolling on arrow keys
+  if([37, 38, 39, 40].indexOf(e.which) > -1) {
       e.preventDefault();
   }
-
-  // Start game on spacebar
-  if (e.which === 32 && !gameStarted && !gameOver) {
-    gameStarted = true;
-    rAF = requestAnimationFrame(loop);
-    return;
-  }
-
-  if (!gameStarted || gameOver) return;
 
   // Left & Right
   if (e.which === 37 || e.which === 39) {
@@ -380,19 +464,11 @@ document.addEventListener('keydown', function(e) {
   }
 });
 
-// Load scoreboard immediately
+// Load scoreboard immediately in the background
 displayScoreboard();
 
-// Draw start screen
-context.fillStyle = 'black';
-context.fillRect(0, 0, canvas.width, canvas.height);
-context.fillStyle = '#4CAF50';
-context.font = '20px monospace';
-context.textAlign = 'center';
-context.textBaseline = 'middle';
-context.fillText('PRESS SPACE', canvas.width / 2, canvas.height / 2 - 15);
-context.fillStyle = 'white';
-context.fillText('TO START', canvas.width / 2, canvas.height / 2 + 15);
+// AUTO-START THE GAME
+rAF = requestAnimationFrame(loop);
 
 </script>
 </body>

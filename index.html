@@ -308,6 +308,12 @@ async function handleGameOver() {
     }
   } catch (e) {
     console.error("Could not fetch scores to verify.", e);
+    // FALLBACK: Show modal anyway if API fails (Power BI CORS restrictions)
+    console.log("Showing score modal as fallback (API unavailable)");
+    pendingHighScores = [];
+    document.getElementById('modal-score-display').innerText = score;
+    document.getElementById('score-modal').style.display = 'flex';
+    document.getElementById('initials-input').focus();
   }
 }
 

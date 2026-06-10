@@ -218,8 +218,20 @@ async function displayScoreboard() {
   const scoreboardList = document.getElementById('scoreboard-list');
   try {
     const response = await fetch(`https://api.github.com/gists/${GIST_ID}?v=${new Date().getTime()}`);
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: Check GIST_ID and permissions`);
+    }
+    
     const data = await response.json();
-    const highScores = JSON.parse(data.files["scores.json"].content) || [];
+    
+    if (!data.files || !data.files["score.json"]) {
+      console.warn("score.json not found in Gist. Initializing...");
+      await initializeGist();
+      return;
+    }
+    
+    const highScores = JSON.parse(data.files["score.json"].content) || [];
 
     scoreboardList.innerHTML = ''; 
     
@@ -234,8 +246,35 @@ async function displayScoreboard() {
       scoreboardList.appendChild(li);
     });
   } catch (e) {
-    console.error(e);
-    scoreboardList.innerHTML = '<li style="color:red;">API Error</li>';
+    console.error("Scoreboard Error:", e.message);
+    scoreboardList.innerHTML = `<li style="color:red;">Error: ${e.message}</li>`;
+  }
+}
+
+async function initializeGist() {
+  try {
+    const scoreboardList = document.getElementById('scoreboard-list');
+    scoreboardList.innerHTML = '<li style="color:#888;">Initializing...</li>';
+    
+    await fetch(`https://api.github.com/gists/${GIST_ID}`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `token ${GH_TOKEN}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        files: { 
+          "score.json": { 
+            content: JSON.stringify([], null, 2) 
+          } 
+        }
+      })
+    });
+    
+    scoreboardList.innerHTML = '<li style="color:#555;">Ready for scores!</li>';
+  } catch (e) {
+    console.error("Gist initialization failed:", e);
+    document.getElementById('scoreboard-list').innerHTML = '<li style="color:red;">Init Failed</li>';
   }
 }
 
@@ -258,7 +297,7 @@ async function handleGameOver() {
   try {
     const response = await fetch(`https://api.github.com/gists/${GIST_ID}?v=${new Date().getTime()}`);
     const data = await response.json();
-    let highScores = JSON.parse(data.files["scores.json"].content) || [];
+    let highScores = JSON.parse(data.files["score.json"].content) || [];
     const lowestScore = highScores.length < 5 ? 0 : highScores[highScores.length - 1].score;
 
     if (highScores.length < 5 || score > lowestScore) {
@@ -284,23 +323,27 @@ document.getElementById('save-score-btn').addEventListener('click', async () => 
   pendingHighScores = pendingHighScores.slice(0, 5);
 
   try {
-    document.getElementById('scoreboard-list').innerHTML = '<li style="color:#555;">Saving...</li>';
+    document.getElementById('scoreboard-list').innerHTML = '<li style="color:#888;">Saving...</li>';
     
-    await fetch(`https://api.github.com/gists/${GIST_ID}?v=${new Date().getTime()}`, {
+    const response = await fetch(`https://api.github.com/gists/${GIST_ID}?v=${new Date().getTime()}`, {
       method: 'PATCH',
       headers: {
         'Authorization': `token ${GH_TOKEN}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        files: { "scores.json": { content: JSON.stringify(pendingHighScores, null, 2) } }
+        files: { "score.json": { content: JSON.stringify(pendingHighScores, null, 2) } }
       })
     });
 
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: Save failed`);
+    }
+
     displayScoreboard(); 
   } catch (e) {
-    console.error("Save failed", e);
-    document.getElementById('scoreboard-list').innerHTML = '<li style="color:red;">Save Error</li>';
+    console.error("Save failed:", e);
+    document.getElementById('scoreboard-list').innerHTML = `<li style="color:red;">Save Error: ${e.message}</li>`;
   }
 });
 
